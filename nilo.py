@@ -128,19 +128,23 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def handle_system_2(query: str, config: OllamaConfig):
+def handle_system_2(query: str, config: OllamaConfig, *, output_schema=None,
+                    system_prompt=SYSTEM_PROMPT):
     """Ask a local model for text; model output is never executed as a command."""
     response = {
         "system": 2, "backend": "ollama", "model": config.model,
         "query": query, "cost_tokens": None,
     }
+    body = {
+        "model": config.model, "prompt": query, "system": system_prompt,
+        "stream": False, "options": {"num_predict": config.max_tokens},
+    }
+    if output_schema is not None:
+        body["format"] = output_schema
+        body["options"]["temperature"] = 0
     request = urllib.request.Request(
         config.base_url.rstrip("/") + "/api/generate",
-        data=json.dumps({
-            "model": config.model, "prompt": query, "system": SYSTEM_PROMPT,
-            "stream": False,
-            "options": {"num_predict": config.max_tokens},
-        }).encode("utf-8"),
+        data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )

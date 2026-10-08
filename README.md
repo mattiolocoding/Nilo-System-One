@@ -150,6 +150,55 @@ Token accounting follows the [Ollama usage documentation](https://docs.ollama.co
 Latency depends on hardware, model size, and whether the model is already
 loaded. Nilo makes no unmeasured speedup or savings claims.
 
+## Typed decisions for applications
+
+Use Nilo to classify a support request, select a workflow, or evaluate an
+assertion against supplied evidence. `nilo_decisions.py` accepts a state and
+named `choice` or `boolean` questions. It uses your local Ollama model with
+a constrained JSON schema and temperature zero, validates every candidate,
+and returns all answers together. Model choices never execute commands.
+
+```bash
+python3 nilo_decisions.py --model qwen2.5:7b-instruct < examples/support-decision.json
+python3 nilo_decisions.py --model qwen2.5:7b-instruct --serve --port 8766
+```
+
+In another terminal:
+
+```bash
+curl http://127.0.0.1:8766/v1/systemone \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/support-decision.json
+```
+
+Or call the same implementation from Python:
+
+```python
+import json
+from nilo import OllamaConfig
+from nilo_decisions import decide
+
+with open("examples/support-decision.json") as stream:
+    request = json.load(stream)
+result = decide(request, OllamaConfig("qwen2.5:7b-instruct", max_tokens=512))
+```
+
+Choice answers contain `choice`; boolean answers contain a boolean `value`.
+`probabilities` is `null`: this generative backend does not expose calibrated
+decision scores. Model usage and elapsed time are reported. This is a useful
+subset of the System One request shape, not full Jev API compatibility;
+score questions and probability readout are not implemented.
+
+The development HTTP service binds only to `127.0.0.1`, handles requests
+serially, and accepts up to 32 questions and 1 MiB per request. Invalid input
+returns HTTP 400; a failed or invalid model response returns 502. `/health`
+reports service availability, not model readiness. Inference timeouts do not
+cancel work already running in Ollama. For missing evidence, include an
+explicit `unknown` choice and describe when to select it.
+
+Structured generation follows the
+[Ollama JSON schema interface](https://docs.ollama.com/capabilities/structured-outputs).
+
 ## Security and tests
 
 Tools are an allowlist of fixed, read-only commands and arguments.
@@ -158,7 +207,7 @@ Paths, options, and shell metacharacters from a query never become command
 arguments. Model output is displayed as text and never executed.
 
 ```bash
-python3 -m unittest test_nilo.py -v
+python3 -m unittest discover -v
 ```
 
 Tests cover routing, ambiguous requests, injection attempts, CLI failures,
@@ -182,3 +231,10 @@ describe routing overhead only; they exclude tool execution and LLM inference.
 
 See the [improvement cycle log](docs/improvement-cycles.md) for changes,
 verification results, recorded measurements, and their limits.
+
+For comparative routing and general decision measurements against Kev, Laya,
+SemIf, Rizzo Flow and NanoJev, see the [benchmark pilot](benchmarks/README.md).
+It includes frozen fixtures, optional backend adapters and per-attempt artifacts.
+The pilot is small and authored; it does not establish a universal accuracy or
+speed winner. `nilo-decisions` measures the typed API with Ollama, separately
+from the zero-token regex router.

@@ -117,6 +117,7 @@ def git_head(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--source", type=Path, help="Inspected upstream checkout (optional)")
     parser.add_argument("--dataset", type=Path, default=Path(__file__).with_name("cases.jsonl"))
     parser.add_argument("--track", choices=("routing", "general"), required=True)
     parser.add_argument("--split", choices=("dev", "eval"), default="eval")
@@ -132,6 +133,8 @@ def main():
     if not rows or not warmups:
         parser.error("Both measured cases and dev warmups are required")
     config = json.loads(args.config.read_text(encoding="utf-8"))
+    if args.source:
+        config["source"] = str(args.source.resolve())
     if config["adapter"] == "nilo" and args.track != "routing":
         parser.error("Nilo's regex router only supports routing; select nilo-ollama for general decisions")
     # Create-only artifacts prevent a rerun from silently replacing bad results.
@@ -142,8 +145,13 @@ def main():
         "repeats": args.repeats, "seed": args.seed, "case_ids": [r["id"] for r in rows],
         "python": platform.python_version(), "platform": platform.platform(),
         "cpu_count": os.cpu_count(), "processor": platform.processor(),
-        "packages": {d.metadata["Name"]: d.version for d in importlib.metadata.distributions()},
+        "packages": {d.metadata.get("Name"): d.version for d in importlib.metadata.distributions()
+                     if d.metadata.get("Name")},
         "nilo_revision": git_head(Path(__file__).resolve().parent.parent),
+        "code_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                        for p in (Path(__file__), Path(__file__).with_name("adapters.py"),
+                                  Path(__file__).parent.parent / "nilo.py",
+                                  Path(__file__).parent.parent / "nilo_decisions.py")},
         "upstream_revision": git_head(config["source"]) if config.get("source") else None,
         "timing_scope": "serial batch=1 wall time including adapter/serialization; model load and dev warmup excluded",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

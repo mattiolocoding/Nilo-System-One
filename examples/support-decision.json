@@ -1,0 +1,19 @@
+{
+  "state": "The customer was charged twice for the same order and asks for a refund.",
+  "questions": {
+    "team": {
+      "type": "choice",
+      "instructions": "Select the team responsible for the customer's request. Use unknown if the request cannot be determined.",
+      "criteria": {
+        "billing": "Charges, payments and refunds",
+        "access": "Passwords and inability to sign in",
+        "engineering": "Reproducible software failures",
+        "unknown": "Insufficient information to choose a team"
+      }
+    },
+    "refund_requested": {
+      "type": "boolean",
+      "instructions": "Does the customer explicitly ask for a refund?"
+    }
+  }
+}
