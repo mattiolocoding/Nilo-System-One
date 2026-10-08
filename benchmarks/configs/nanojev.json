@@ -1,0 +1,8 @@
+{
+  "adapter": "nanojev",
+  "model": "C-Tianyu/NanoJev",
+  "revision": "047b927b30882a1138fc504821b82ac145a4b81a",
+  "device": "cuda:0",
+  "precision": "bf16",
+  "threads": 4
+}

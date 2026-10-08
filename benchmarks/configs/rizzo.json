@@ -1,0 +1,7 @@
+{
+  "adapter": "rizzo",
+  "size": "1.7b",
+  "quant": "q4_k_m",
+  "device": "cpu",
+  "threads": 4
+}
