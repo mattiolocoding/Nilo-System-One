@@ -53,7 +53,7 @@ command, then test both valid requests and ambiguous wording.
 ## Inspect a decision before execution
 
 Inspired by the typed-decision approach of
-[Rizzo Flow](https://github.com/Rizzo-AI-Academy/rizzo-flow), Nilo separates
+JEV, Nilo separates
 routing decisions from execution. `decide_query()` returns an immutable
 `RoutingDecision` with an action, reason, intent, and allowed command. It runs
 no tools and makes no model requests. `route_query()` applies the decision.
