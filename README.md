@@ -21,7 +21,9 @@ python3 nilo.py --help
 python3 nilo.py --list-tools
 ```
 
-Requests can be written in English or Italian.
+The router recognizes defined English and Italian phrases, plus selected
+French, Spanish and German requests. See `nilo_patterns.py` for the complete
+additional grammars; this is finite phrase support, not general language understanding.
 `--list-tools` returns the supported intents and fixed command arguments as
 JSON without executing commands or making model requests.
 
@@ -47,8 +49,9 @@ and commands with arbitrary arguments go to System 2.
 If future patterns overlap, Nilo falls back with
 `routing.reason: "ambiguous_intent_match"` instead of choosing a tool by order.
 
-To extend the router, add a `TOOL_INTENTS` entry with a pattern and a fixed
-command, then test both valid requests and ambiguous wording.
+To add a tool, add a `TOOL_INTENTS` entry with a pattern and a fixed command.
+Add alternate complete-request grammars in `nilo_patterns.py`; test both
+valid requests and ambiguous wording. Unicode accents are normalized to NFC.
 
 ## Inspect a decision before execution
 

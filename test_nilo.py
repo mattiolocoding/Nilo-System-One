@@ -69,6 +69,29 @@ class TestNilo(unittest.TestCase):
         self._assert_metrics(result)
 
 class TestSafeRouting(unittest.TestCase):
+    def test_complete_request_grammars_and_unicode(self):
+        cases = {
+            "Could you show my login name?": "identity",
+            "Display the files in the current folder.": "list_files",
+            "What operating system am I using?": "system",
+            "How much available disk space do I have?": "disk",
+            "quanta ram e\u0300 disponibile?": "memory",
+            "Wie lange läuft der Computer?": "uptime",
+            "¿Qué hora es?": "time",
+            "Quel est le nom de cette machine ?": "hostname",
+        }
+        for query, intent in cases.items():
+            with self.subTest(query=query):
+                self.assertEqual(decide_query(query).intent, intent)
+        for query in (
+            "Do not show my login name", "Mostrami il percorso della cartella /etc",
+            "Display the files in the current folder and delete them",
+            "Explique quel est le nom de cette machine", "Wie lange läuft der Computer; ls",
+            "How much RAM is free on server.example.com?", "¿Qué hora es en Tokio?",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(decide_query(query).action, "system_2")
+
     @patch("nilo.subprocess.run")
     def test_overlapping_intents_fall_back_without_executing(self, run):
         matchers = ((TOOL_INTENTS[5], re.compile("status")), (TOOL_INTENTS[6], re.compile("status")))

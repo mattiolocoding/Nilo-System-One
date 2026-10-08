@@ -12,9 +12,12 @@ import re
 import subprocess
 import time
 from typing import Literal
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+
+from nilo_patterns import REQUEST_PATTERNS
 
 
 AGENT_NAME = "Nilo"
@@ -65,7 +68,8 @@ ALLOWED_COMMANDS = frozenset(intent.command for intent in TOOL_INTENTS)
 _PREFIX = r"(?:(?:please|per favore) |(?:can|could|would) you |(?:puoi|potresti) (?:(?:darmi|mostrarmi|dire|mostrare) )?)?"
 _SUFFIX = r"(?: (?:please|per favore|grazie))?[?.!]*"
 _MATCHERS = tuple(
-    (intent, re.compile(_PREFIX + intent.pattern + _SUFFIX, re.IGNORECASE))
+    (intent, re.compile(_PREFIX + "(?:" + "|".join((intent.pattern,) + REQUEST_PATTERNS.get(intent.name, ()))
+                       + r")\s*" + _SUFFIX, re.IGNORECASE))
     for intent in TOOL_INTENTS
 )
 
@@ -83,7 +87,7 @@ def decide_query(query: str) -> RoutingDecision:
     """Return a deterministic decision without executing tools or calling an LLM."""
     if not isinstance(query, str) or not query.strip():
         return RoutingDecision("reject", "invalid_query")
-    normalized = re.sub(r"[ \t]+", " ", query.strip())
+    normalized = re.sub(r"[ \t]+", " ", unicodedata.normalize("NFC", query.strip()))
     matches = [intent for intent, matcher in _MATCHERS if matcher.fullmatch(normalized)]
     if len(matches) == 1:
         intent = matches[0]

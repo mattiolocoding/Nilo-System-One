@@ -151,6 +151,7 @@ def main():
         "code_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                         for p in (Path(__file__), Path(__file__).with_name("adapters.py"),
                                   Path(__file__).parent.parent / "nilo.py",
+                                  Path(__file__).parent.parent / "nilo_patterns.py",
                                   Path(__file__).parent.parent / "nilo_decisions.py")},
         "upstream_revision": git_head(config["source"]) if config.get("source") else None,
         "timing_scope": "serial batch=1 wall time including adapter/serialization; model load and dev warmup excluded",
