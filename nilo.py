@@ -210,7 +210,7 @@ def route_query(query: str, *, system_2: OllamaConfig | None = None,
     else:
         response = {
             "status": "routed_to_system_2", "system": 2, "query": query,
-            "message": "System 2 is not configured. Set --model or INTERNAL_JEV_MODEL to enable local Ollama.",
+            "message": "System 2 is not configured. Set --model or NILO_MODEL to enable local Ollama.",
         }
     response["routing"] = {"method": "regex", "action": decision.action, "reason": decision.reason}
     response["agent"] = AGENT_NAME
@@ -222,8 +222,8 @@ def route_query(query: str, *, system_2: OllamaConfig | None = None,
 def main():
     parser = argparse.ArgumentParser(description="Nilo: local CLI router with optional Ollama fallback")
     parser.add_argument("query", nargs="+", help="Request in Italian or English")
-    parser.add_argument("--model", default=os.environ.get("INTERNAL_JEV_MODEL"), help="Installed Ollama model (enables System 2)")
-    parser.add_argument("--ollama-url", default=os.environ.get("INTERNAL_JEV_OLLAMA_URL", "http://127.0.0.1:11434"))
+    parser.add_argument("--model", default=os.environ.get("NILO_MODEL"), help="Installed Ollama model (enables System 2)")
+    parser.add_argument("--ollama-url", default=os.environ.get("NILO_OLLAMA_URL", "http://127.0.0.1:11434"))
     parser.add_argument("--llm-timeout", type=float, default=60.0)
     parser.add_argument("--tool-timeout", type=float, default=5.0)
     parser.add_argument("--max-tokens", type=int, default=256)

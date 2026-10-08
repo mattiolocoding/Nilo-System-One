@@ -10,9 +10,9 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from internal_jev import SYSTEM_PROMPT, OllamaConfig, decide_query, handle_tool_call, main, route_query
+from nilo import SYSTEM_PROMPT, OllamaConfig, decide_query, handle_tool_call, main, route_query
 
-class TestInternalJev(unittest.TestCase):
+class TestNilo(unittest.TestCase):
 
     def _assert_metrics(self, result):
         self.assertEqual(result["cost_tokens"], 0)
@@ -68,8 +68,8 @@ class TestInternalJev(unittest.TestCase):
         self._assert_metrics(result)
 
 class TestSafeRouting(unittest.TestCase):
-    @patch("internal_jev.subprocess.run")
-    @patch("internal_jev.urllib.request.build_opener")
+    @patch("nilo.subprocess.run")
+    @patch("nilo.urllib.request.build_opener")
     def test_typed_decision_has_no_side_effects(self, opener, run):
         decision = decide_query("lista file")
         self.assertEqual(decision.action, "tool")
@@ -81,8 +81,8 @@ class TestSafeRouting(unittest.TestCase):
         opener.assert_not_called()
         run.assert_not_called()
 
-    @patch("internal_jev.subprocess.run")
-    @patch("internal_jev.urllib.request.build_opener")
+    @patch("nilo.subprocess.run")
+    @patch("nilo.urllib.request.build_opener")
     def test_decision_only_bypasses_both_systems(self, opener, run):
         for query, action in (("ls", "tool"), ("explain ls", "system_2")):
             with self.subTest(query=query):
@@ -113,10 +113,10 @@ class TestSafeRouting(unittest.TestCase):
                 self.assertEqual(result["system"], 1)
                 self.assertEqual(result["cost_tokens"], 0)
 
-    @patch("internal_jev.subprocess.run")
+    @patch("nilo.subprocess.run")
     def test_ambiguous_and_injection_queries_do_not_run_tools(self, run):
         for query in (
-            "time && touch /tmp/jev-injection", "ls; whoami", "$(whoami)",
+            "time && touch /tmp/nilo-injection", "ls; whoami", "$(whoami)",
             "ls | cat", "ls\nwhoami", "ls /etc", "ls -R", "free --help",
             "tell me a story about time", "explain ls", "how to free memory",
             "che ora è e chi sono", "list files and delete them", "who am i as a person",
@@ -127,21 +127,21 @@ class TestSafeRouting(unittest.TestCase):
                 self.assertEqual(result["query"], query)
         run.assert_not_called()
 
-    @patch("internal_jev.urllib.request.build_opener")
+    @patch("nilo.urllib.request.build_opener")
     def test_system_1_bypasses_configured_llm(self, opener):
         result = route_query("whoami", system_2=OllamaConfig("unused-model"))
         self.assertEqual(result["system"], 1)
         self.assertEqual(result["cost_tokens"], 0)
         opener.assert_not_called()
 
-    @patch("internal_jev.subprocess.run")
+    @patch("nilo.subprocess.run")
     def test_allowlist_blocks_arbitrary_commands_and_flags(self, run):
         for command in (["sh", "-c", "whoami"], ["rm", "file"], ["ls", "-R"], [], ["date", ";whoami"]):
             with self.subTest(command=command):
                 self.assertEqual(handle_tool_call(command)["status"], "error")
         run.assert_not_called()
 
-    @patch("internal_jev.subprocess.run")
+    @patch("nilo.subprocess.run")
     def test_argv_shell_and_timeout(self, run):
         run.return_value = subprocess.CompletedProcess(["ls", "-la"], 0, stdout="files\n", stderr="")
         result = route_query("ls", tool_timeout=2.0)
@@ -151,7 +151,7 @@ class TestSafeRouting(unittest.TestCase):
         )
         self.assertEqual(result["output"], "files")
 
-    @patch("internal_jev.subprocess.run")
+    @patch("nilo.subprocess.run")
     def test_tool_failures_are_json_errors(self, run):
         cases = (
             (FileNotFoundError(), "Command not found"),
@@ -169,7 +169,7 @@ class TestSafeRouting(unittest.TestCase):
                 self.assertEqual(result["cost_tokens"], 0)
                 self.assertIn("execution_time_ms", result)
 
-    @patch("internal_jev.subprocess.run")
+    @patch("nilo.subprocess.run")
     def test_invalid_tool_timeout(self, run):
         for timeout in (0, -1, float("nan"), float("inf")):
             with self.subTest(timeout=timeout):
@@ -183,7 +183,7 @@ class TestSafeRouting(unittest.TestCase):
                 self.assertEqual(result["status"], "error")
                 self.assertIn("execution_time_ms", result)
 
-    @patch("internal_jev.time.time", side_effect=AssertionError("wall clock used"))
+    @patch("nilo.time.time", side_effect=AssertionError("wall clock used"))
     def test_execution_metric_uses_monotonic_clock(self, wall_clock):
         self.assertGreaterEqual(route_query("whoami")["execution_time_ms"], 0)
 
@@ -307,14 +307,14 @@ class TestOllamaHTTP(unittest.TestCase):
     def test_environment_proxy_is_bypassed(self):
         self.assertEqual(route_query("complex request", system_2=self.config)["status"], "success")
 
-    @patch("internal_jev.subprocess.run")
+    @patch("nilo.subprocess.run")
     def test_model_generated_shell_text_is_not_executed(self, run):
         type(self).body["response"] = "$(whoami); rm -rf /"
         result = route_query("complex request", system_2=self.config)
         self.assertEqual(result["output"], "$(whoami); rm -rf /")
         run.assert_not_called()
 
-    @patch("internal_jev.urllib.request.OpenerDirector.open", side_effect=TimeoutError("timeout"))
+    @patch("nilo.urllib.request.OpenerDirector.open", side_effect=TimeoutError("timeout"))
     def test_request_timeout(self, open_request):
         result = route_query("complex request", system_2=self.config)
         self.assertEqual(result["status"], "error")
@@ -333,44 +333,44 @@ class TestOllamaHTTP(unittest.TestCase):
 
 
 class TestCLI(unittest.TestCase):
-    @patch("internal_jev.subprocess.run")
+    @patch("nilo.subprocess.run")
     def test_decision_only_cli(self, run):
         stream = io.StringIO()
-        with patch("sys.argv", ["internal_jev.py", "--decide-only", "ls"]), redirect_stdout(stream):
+        with patch("sys.argv", ["nilo.py", "--decide-only", "ls"]), redirect_stdout(stream):
             self.assertEqual(main(), 0)
         result = json.loads(stream.getvalue())
         self.assertEqual(result["status"], "decision")
         self.assertEqual(result["command"], ["ls", "-la"])
         run.assert_not_called()
 
-    @patch.dict(os.environ, {"INTERNAL_JEV_MODEL": "configured-model"})
-    @patch("internal_jev.route_query")
+    @patch.dict(os.environ, {"NILO_MODEL": "configured-model"})
+    @patch("nilo.route_query")
     def test_environment_enables_model(self, route):
         route.return_value = {"status": "success"}
-        with patch("sys.argv", ["internal_jev.py", "complex request"]), redirect_stdout(io.StringIO()):
+        with patch("sys.argv", ["nilo.py", "complex request"]), redirect_stdout(io.StringIO()):
             self.assertEqual(main(), 0)
         self.assertEqual(route.call_args.kwargs["system_2"].model, "configured-model")
 
-    @patch.dict(os.environ, {"INTERNAL_JEV_MODEL": "configured-model"})
-    @patch("internal_jev.route_query")
+    @patch.dict(os.environ, {"NILO_MODEL": "configured-model"})
+    @patch("nilo.route_query")
     def test_cli_model_overrides_environment(self, route):
         route.return_value = {"status": "success"}
-        with patch("sys.argv", ["internal_jev.py", "--model", "override-model", "complex request"]), redirect_stdout(io.StringIO()):
+        with patch("sys.argv", ["nilo.py", "--model", "override-model", "complex request"]), redirect_stdout(io.StringIO()):
             main()
         self.assertEqual(route.call_args.kwargs["system_2"].model, "override-model")
 
-    @patch.dict(os.environ, {"INTERNAL_JEV_MODEL": "configured-model"})
-    @patch("internal_jev.urllib.request.build_opener")
+    @patch.dict(os.environ, {"NILO_MODEL": "configured-model"})
+    @patch("nilo.urllib.request.build_opener")
     def test_disable_overrides_environment(self, opener):
         stream = io.StringIO()
-        with patch("sys.argv", ["internal_jev.py", "--no-system-2", "complex request"]), redirect_stdout(stream):
+        with patch("sys.argv", ["nilo.py", "--no-system-2", "complex request"]), redirect_stdout(stream):
             self.assertEqual(main(), 0)
         self.assertEqual(json.loads(stream.getvalue())["status"], "routed_to_system_2")
         opener.assert_not_called()
 
-    @patch("internal_jev.route_query", return_value={"status": "error", "error": "unavailable"})
+    @patch("nilo.route_query", return_value={"status": "error", "error": "unavailable"})
     def test_error_exit_code(self, route):
-        with patch("sys.argv", ["internal_jev.py", "time"]), redirect_stdout(io.StringIO()):
+        with patch("sys.argv", ["nilo.py", "time"]), redirect_stdout(io.StringIO()):
             self.assertEqual(main(), 1)
 
 
