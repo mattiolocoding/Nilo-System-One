@@ -235,7 +235,8 @@ def route_query(query: str, *, system_2: OllamaConfig | None = None,
 
 def main():
     parser = argparse.ArgumentParser(description="Nilo: local CLI router with optional Ollama fallback")
-    parser.add_argument("query", nargs="+", help="Request in Italian or English")
+    parser.add_argument("query", nargs="*", help="Request in Italian or English")
+    parser.add_argument("--list-tools", action="store_true", help="List supported intents and fixed commands without running them")
     parser.add_argument("--model", default=os.environ.get("NILO_MODEL"), help="Installed Ollama model (enables System 2)")
     parser.add_argument("--ollama-url", default=os.environ.get("NILO_OLLAMA_URL", "http://127.0.0.1:11434"))
     parser.add_argument("--llm-timeout", type=float, default=60.0)
@@ -244,6 +245,19 @@ def main():
     parser.add_argument("--no-system-2", action="store_true", help="Disable Ollama, including environment configuration")
     parser.add_argument("--decide-only", action="store_true", help="Return the routing decision without executing tools or an LLM")
     args = parser.parse_args()
+    if args.list_tools:
+        if args.query:
+            parser.error("--list-tools does not take a query")
+        start_time = time.perf_counter()
+        response = {
+            "agent": AGENT_NAME, "status": "success", "cost_tokens": 0,
+            "tools": [{"intent": intent.name, "command": list(intent.command)} for intent in TOOL_INTENTS],
+        }
+        response["execution_time_ms"] = round((time.perf_counter() - start_time) * 1000, 2)
+        print(json.dumps(response, indent=2))
+        return 0
+    if not args.query:
+        parser.error("a query is required unless --list-tools is used")
     if not _positive_timeout(args.tool_timeout):
         parser.error("--tool-timeout must be finite and positive")
     config = None

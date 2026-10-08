@@ -18,9 +18,12 @@ cd Nilo-System-One
 python3 nilo.py "what time is it?"
 python3 nilo.py "disk space"
 python3 nilo.py --help
+python3 nilo.py --list-tools
 ```
 
 Requests can be written in English or Italian.
+`--list-tools` returns the supported intents and fixed command arguments as
+JSON without executing commands or making model requests.
 
 ## System 1 tools
 
@@ -162,3 +165,18 @@ temporary loopback server: they require no Ollama instance, model downloads,
 or external services. System 1 smoke tests require the Linux tools.
 
 GitHub Actions runs the suite on Ubuntu with Python 3.10, 3.12, and 3.14.
+
+## Reproducible routing benchmark
+
+```bash
+python3 benchmark_nilo.py --iterations 1000
+```
+
+The benchmark checks a 13-case corpus covering all nine tool intents, complex
+requests, injection-shaped text, and an invalid request. After warm-up, it
+measures routing decisions and reports mean, p50, p95, and maximum latency
+in milliseconds. It never executes CLI tools or calls Ollama. These numbers
+describe routing overhead only; they exclude tool execution and LLM inference.
+
+See the [improvement cycle log](docs/improvement-cycles.md) for changes,
+verification results, recorded measurements, and their limits.

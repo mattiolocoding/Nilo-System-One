@@ -346,6 +346,34 @@ class TestOllamaHTTP(unittest.TestCase):
 
 class TestCLI(unittest.TestCase):
     @patch.dict(os.environ, {"NILO_MODEL": "test-model", "NILO_OLLAMA_URL": "http://remote.invalid"})
+    @patch("nilo.subprocess.run")
+    @patch("nilo.urllib.request.build_opener")
+    def test_list_tools_without_query_or_execution(self, opener, run):
+        stream = io.StringIO()
+        with patch("sys.argv", ["nilo.py", "--list-tools"]), redirect_stdout(stream):
+            self.assertEqual(main(), 0)
+        result = json.loads(stream.getvalue())
+        self.assertEqual(result["agent"], "Nilo")
+        self.assertEqual(result["cost_tokens"], 0)
+        self.assertIn({"intent": "disk", "command": ["df", "-h"]}, result["tools"])
+        opener.assert_not_called()
+        run.assert_not_called()
+
+    def test_missing_query_is_a_cli_error(self):
+        with patch("sys.argv", ["nilo.py"]), redirect_stdout(io.StringIO()):
+            from contextlib import redirect_stderr
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                main()
+        self.assertEqual(error.exception.code, 2)
+
+    def test_list_tools_rejects_a_query(self):
+        from contextlib import redirect_stderr
+        with patch("sys.argv", ["nilo.py", "--list-tools", "ls"]):
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                main()
+        self.assertEqual(error.exception.code, 2)
+
+    @patch.dict(os.environ, {"NILO_MODEL": "test-model", "NILO_OLLAMA_URL": "http://remote.invalid"})
     @patch("nilo.urllib.request.build_opener")
     def test_decision_and_tools_ignore_unused_model_configuration(self, opener):
         for args in (["--decide-only", "complex request"], ["whoami"]):
