@@ -115,6 +115,8 @@ Configurable limits:
 The HTTP timeout does not guarantee cancellation of inference on the server.
 Accepted HTTP responses are limited to 1 MiB. Waiting for a model to load
 counts toward the HTTP timeout.
+Incomplete bodies, malformed HTTP status lines, and invalid or conflicting
+response framing return JSON errors instead of successful answers or tracebacks.
 
 Python API configuration is explicit; environment variables are read by the
 CLI:

@@ -3,6 +3,7 @@
 
 import argparse
 from dataclasses import dataclass
+import http.client
 import ipaddress
 import json
 import math
@@ -17,6 +18,7 @@ import urllib.request
 
 
 AGENT_NAME = "Nilo"
+MAX_RESPONSE_BYTES = 1_048_576
 SYSTEM_PROMPT = (
     "You are Nilo, a local assistant. Answer concisely in the same language "
     "as the user's request. Respond with text only."
@@ -148,9 +150,23 @@ def handle_system_2(query: str, config: OllamaConfig):
     )
     try:
         with opener.open(request, timeout=config.timeout) as result:
-            raw = result.read(1_048_577)
-        if len(raw) > 1_048_576:
+            lengths = result.headers.get_all("Content-Length", [])
+            transfer = result.headers.get("Transfer-Encoding")
+            if len(lengths) > 1 or (lengths and transfer is not None):
+                raise ValueError("Ambiguous HTTP response framing")
+            expected_size = None
+            if lengths:
+                length = lengths[0].strip()
+                if not length.isascii() or not length.isdecimal():
+                    raise ValueError("Invalid HTTP Content-Length")
+                expected_size = int(length)
+            if transfer is not None and transfer.strip().lower() != "chunked":
+                raise ValueError("Unsupported HTTP Transfer-Encoding")
+            raw = result.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
             raise ValueError("Ollama response exceeds 1 MiB")
+        if expected_size is not None and len(raw) != expected_size:
+            raise ValueError("Incomplete HTTP response body")
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             raise ValueError("Ollama response must be a JSON object")
@@ -171,7 +187,7 @@ def handle_system_2(query: str, config: OllamaConfig):
     except urllib.error.HTTPError as exc:
         response.update(status="error", error=f"Ollama HTTP {exc.code}")
         exc.close()
-    except (TimeoutError, urllib.error.URLError, OSError) as exc:
+    except (TimeoutError, urllib.error.URLError, OSError, http.client.HTTPException) as exc:
         response.update(status="error", error=f"Ollama request failed: {exc}")
     except (ValueError, UnicodeError) as exc:
         response.update(status="error", error=f"Invalid Ollama response: {exc}")

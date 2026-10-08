@@ -235,10 +235,14 @@ class TestOllamaHTTP(unittest.TestCase):
                 cls.request_path = self.path
                 cls.request_body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 cls.request_count += 1
+                if cls.raw_http is not None:
+                    self.wfile.write(cls.raw_http)
+                    self.close_connection = True
+                    return
                 body = cls.body if isinstance(cls.body, bytes) else json.dumps(cls.body).encode()
                 self.send_response(cls.http_status)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Content-Length", cls.content_length or str(len(body)))
                 if cls.http_status == 302:
                     self.send_header("Location", cls.base_url + "/redirected")
                 self.end_headers()
@@ -261,6 +265,8 @@ class TestOllamaHTTP(unittest.TestCase):
     def setUp(self):
         type(self).http_status = 200
         type(self).request_count = 0
+        type(self).raw_http = None
+        type(self).content_length = None
         type(self).body = {
             "response": "Risposta locale", "done": True,
             "prompt_eval_count": 12, "eval_count": 7, "done_reason": "stop",
@@ -283,6 +289,55 @@ class TestOllamaHTTP(unittest.TestCase):
         self.assertEqual(result["usage"], {"input_tokens": 12, "output_tokens": 7})
         self.assertEqual(result["cost_tokens"], 19)
         self.assertGreaterEqual(result["execution_time_ms"], 0)
+
+    def test_truncated_content_length_is_not_success(self):
+        type(self).content_length = str(len(json.dumps(self.body).encode()) + 50)
+        result = route_query("complex request", system_2=self.config)
+        self.assertEqual(result["status"], "error")
+        self.assertIsNone(result["cost_tokens"])
+
+    def test_invalid_content_length_is_not_success(self):
+        for value in ("-1", "not-a-number"):
+            with self.subTest(value=value):
+                type(self).content_length = value
+                result = route_query("complex request", system_2=self.config)
+                self.assertEqual(result["status"], "error")
+                self.assertIsNone(result["cost_tokens"])
+
+    def test_http_protocol_errors_are_json_errors(self):
+        for raw in (
+            b"NOT-HTTP\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n20\r\nshort",
+        ):
+            with self.subTest(raw=raw):
+                type(self).raw_http = raw
+                result = route_query("complex request", system_2=self.config)
+                self.assertEqual(result["status"], "error")
+                self.assertIsNone(result["cost_tokens"])
+                self.assertGreaterEqual(result["execution_time_ms"], 0)
+
+    def test_complete_chunked_response_succeeds(self):
+        body = json.dumps(self.body).encode()
+        type(self).raw_http = (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+            + f"{len(body):x}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+        )
+        result = route_query("complex request", system_2=self.config)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["cost_tokens"], 19)
+
+    def test_ambiguous_http_framing_is_rejected(self):
+        body = json.dumps(self.body).encode()
+        for headers in (
+            b"Content-Length: 1\r\nContent-Length: 2\r\n",
+            b"Content-Length: 1\r\nTransfer-Encoding: chunked\r\n",
+            b"Transfer-Encoding: unsupported\r\n",
+        ):
+            with self.subTest(headers=headers):
+                type(self).raw_http = b"HTTP/1.1 200 OK\r\n" + headers + b"\r\n" + body
+                result = route_query("complex request", system_2=self.config)
+                self.assertEqual(result["status"], "error")
+                self.assertIsNone(result["cost_tokens"])
 
     def test_missing_or_invalid_usage_is_unknown(self):
         for counts in ({}, {"prompt_eval_count": -1, "eval_count": 7}, {"prompt_eval_count": True, "eval_count": 7}):

@@ -1,6 +1,6 @@
 # Improvement cycles — 2026-10-08
 
-Three bounded cycles were completed on the local checkout. Each cycle used
+The following bounded cycles were completed on the local checkout. Each cycle used
 inspection, changes, and verification before proceeding to the next.
 
 ## Cycle 1: naming, documentation, repository consistency
@@ -50,7 +50,24 @@ on unseen requests or an end-to-end speedup against an LLM.
 ## Validation limits
 
 Tests ran locally on Linux with Python 3.14.7. The configured CI matrix covers
-Python 3.10, 3.12, and 3.14; those remote jobs require the workflow to be
-published. Hosted CI results must be checked after publication.
+Python 3.10, 3.12, and 3.14. The first three cycles were published at `d591d0d`
+and [passed hosted CI](https://github.com/mattiolocoding/Nilo-System-One/actions/runs/37758947962).
+Results for subsequent commits must be checked after publication.
 
 This checkout uses the Apache-2.0 license selected by the maintainer.
+
+## Cycle 4: incomplete HTTP responses and protocol errors
+
+Real loopback HTTP fixtures reproduced three false-success cases (truncated
+Content-Length, negative Content-Length, and nonnumeric Content-Length) and
+two uncaught exceptions (a malformed status line and truncated chunked data).
+
+- Response lengths are validated before declaring success.
+- Conflicting length headers and unsupported transfer encodings are rejected.
+- HTTP protocol exceptions return JSON errors with unknown token usage.
+- Complete chunked responses remain supported.
+- Verification: 43 tests passed, including five new HTTP regression tests.
+
+The implementation handles the [HTTP client exception hierarchy](https://docs.python.org/3/library/http.client.html#http.client.HTTPException)
+in addition to socket and URL errors. HTTP timeouts retain their documented
+per-operation semantics; this change does not introduce a total-request deadline.
