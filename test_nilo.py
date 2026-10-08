@@ -5,12 +5,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
 import os
+import re
 import subprocess
 import threading
 import unittest
 from unittest.mock import patch
 
-from nilo import SYSTEM_PROMPT, OllamaConfig, decide_query, handle_tool_call, main, route_query
+from nilo import SYSTEM_PROMPT, TOOL_INTENTS, OllamaConfig, decide_query, handle_tool_call, main, route_query
 
 class TestNilo(unittest.TestCase):
 
@@ -68,6 +69,15 @@ class TestNilo(unittest.TestCase):
         self._assert_metrics(result)
 
 class TestSafeRouting(unittest.TestCase):
+    @patch("nilo.subprocess.run")
+    def test_overlapping_intents_fall_back_without_executing(self, run):
+        matchers = ((TOOL_INTENTS[5], re.compile("status")), (TOOL_INTENTS[6], re.compile("status")))
+        with patch("nilo._MATCHERS", matchers):
+            result = route_query("status")
+        self.assertEqual(result["status"], "routed_to_system_2")
+        self.assertEqual(result["routing"]["reason"], "ambiguous_intent_match")
+        run.assert_not_called()
+
     @patch("nilo.subprocess.run")
     @patch("nilo.urllib.request.build_opener")
     def test_typed_decision_has_no_side_effects(self, opener, run):
@@ -136,7 +146,7 @@ class TestSafeRouting(unittest.TestCase):
 
     @patch("nilo.subprocess.run")
     def test_allowlist_blocks_arbitrary_commands_and_flags(self, run):
-        for command in (["sh", "-c", "whoami"], ["rm", "file"], ["ls", "-R"], [], ["date", ";whoami"]):
+        for command in (["sh", "-c", "whoami"], ["rm", "file"], ["ls", "-R"], [], ["date", ";whoami"], None, "whoami", [["whoami"]], [42]):
             with self.subTest(command=command):
                 self.assertEqual(handle_tool_call(command)["status"], "error")
         run.assert_not_called()
@@ -171,7 +181,7 @@ class TestSafeRouting(unittest.TestCase):
 
     @patch("nilo.subprocess.run")
     def test_invalid_tool_timeout(self, run):
-        for timeout in (0, -1, float("nan"), float("inf")):
+        for timeout in (0, -1, float("nan"), float("inf"), True, None, "5", 10 ** 1000):
             with self.subTest(timeout=timeout):
                 self.assertEqual(route_query("time", tool_timeout=timeout)["status"], "error")
         run.assert_not_called()
@@ -206,7 +216,9 @@ class TestOllamaConfig(unittest.TestCase):
 
     def test_rejects_invalid_limits_and_empty_model(self):
         for kwargs in (
-            {"model": " "}, {"timeout": 0}, {"timeout": float("inf")},
+            {"model": " "}, {"model": None}, {"base_url": None},
+            {"timeout": 0}, {"timeout": float("inf")}, {"timeout": True},
+            {"timeout": "5"}, {"timeout": None}, {"timeout": 10 ** 1000},
             {"timeout": float("nan")}, {"max_tokens": 0}, {"max_tokens": True},
         ):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
@@ -333,6 +345,17 @@ class TestOllamaHTTP(unittest.TestCase):
 
 
 class TestCLI(unittest.TestCase):
+    @patch.dict(os.environ, {"NILO_MODEL": "test-model", "NILO_OLLAMA_URL": "http://remote.invalid"})
+    @patch("nilo.urllib.request.build_opener")
+    def test_decision_and_tools_ignore_unused_model_configuration(self, opener):
+        for args in (["--decide-only", "complex request"], ["whoami"]):
+            with self.subTest(args=args):
+                stream = io.StringIO()
+                with patch("sys.argv", ["nilo.py"] + args), redirect_stdout(stream):
+                    self.assertEqual(main(), 0)
+                self.assertIn(json.loads(stream.getvalue())["status"], ("success", "decision"))
+        opener.assert_not_called()
+
     @patch("nilo.subprocess.run")
     def test_decision_only_cli(self, run):
         stream = io.StringIO()

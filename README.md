@@ -41,6 +41,8 @@ some polite phrases such as `please show files` and
 `puoi darmi la lista file please`. The entire request must match one intent.
 Requests such as `tell me a joke about time`, `explain ls`, multiple intents,
 and commands with arbitrary arguments go to System 2.
+If future patterns overlap, Nilo falls back with
+`routing.reason: "ambiguous_intent_match"` instead of choosing a tool by order.
 
 To extend the router, add a `TOOL_INTENTS` entry with a pattern and a fixed
 command, then test both valid requests and ambiguous wording.
@@ -90,6 +92,8 @@ python3 nilo.py --no-system-2 "Write a short poem about the sea."
 when an environment variable is set. Without a model, complex requests return
 `status: "routed_to_system_2"` with configuration instructions; no inference
 occurs. System 1 requests bypass the LLM even when it is configured.
+Model configuration is validated only when a request needs System 2;
+`--decide-only` and System 1 tools work independently of unused model settings.
 
 The default server is `http://127.0.0.1:11434`. Set `--ollama-url` or
 `NILO_OLLAMA_URL` to change it. Only HTTP(S) origins on loopback hosts

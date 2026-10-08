@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import time
+from typing import Literal
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -31,7 +32,7 @@ class ToolIntent:
 
 @dataclass(frozen=True)
 class RoutingDecision:
-    action: str
+    action: Literal["tool", "system_2", "reject"]
     reason: str
     intent: str | None = None
     command: tuple[str, ...] = ()
@@ -68,7 +69,12 @@ _MATCHERS = tuple(
 
 
 def _positive_timeout(value: float) -> bool:
-    return math.isfinite(value) and value > 0
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value) and value > 0
+    except OverflowError:
+        return False
 
 
 def decide_query(query: str) -> RoutingDecision:
@@ -76,9 +82,12 @@ def decide_query(query: str) -> RoutingDecision:
     if not isinstance(query, str) or not query.strip():
         return RoutingDecision("reject", "invalid_query")
     normalized = re.sub(r"[ \t]+", " ", query.strip())
-    for intent, matcher in _MATCHERS:
-        if matcher.fullmatch(normalized):
-            return RoutingDecision("tool", "full_intent_match", intent.name, intent.command)
+    matches = [intent for intent, matcher in _MATCHERS if matcher.fullmatch(normalized)]
+    if len(matches) == 1:
+        intent = matches[0]
+        return RoutingDecision("tool", "full_intent_match", intent.name, intent.command)
+    if len(matches) > 1:
+        return RoutingDecision("system_2", "ambiguous_intent_match")
     return RoutingDecision("system_2", "no_full_intent_match")
 
 
@@ -90,12 +99,14 @@ class OllamaConfig:
     max_tokens: int = 256
 
     def __post_init__(self):
-        if not self.model.strip():
+        if not isinstance(self.model, str) or not self.model.strip():
             raise ValueError("An Ollama model is required")
         if not _positive_timeout(self.timeout):
             raise ValueError("LLM timeout must be finite and positive")
         if type(self.max_tokens) is not int or self.max_tokens <= 0:
             raise ValueError("max_tokens must be a positive integer")
+        if not isinstance(self.base_url, str):
+            raise ValueError("Ollama URL must be a string")
         try:
             parsed = urllib.parse.urlsplit(self.base_url)
             local_host = parsed.hostname == "localhost"
@@ -169,8 +180,11 @@ def handle_system_2(query: str, config: OllamaConfig):
 
 def handle_tool_call(command: list, *, timeout: float = 5.0):
     """Execute only fixed, read-only commands with a bounded wait and no shell."""
-    if tuple(command) not in ALLOWED_COMMANDS:
+    if (not isinstance(command, (list, tuple)) or not command
+            or any(not isinstance(arg, str) for arg in command)
+            or tuple(command) not in ALLOWED_COMMANDS):
         return {"status": "error", "error": "Command is not allowlisted"}
+    command = list(command)
     tool = " ".join(command)
     if not _positive_timeout(timeout):
         return {"status": "error", "tool": tool, "error": "Tool timeout must be finite and positive"}
@@ -233,13 +247,15 @@ def main():
     if not _positive_timeout(args.tool_timeout):
         parser.error("--tool-timeout must be finite and positive")
     config = None
-    if args.model and not args.no_system_2:
+    query = " ".join(args.query)
+    if (args.model and not args.no_system_2 and not args.decide_only
+            and decide_query(query).action == "system_2"):
         try:
             config = OllamaConfig(args.model, args.ollama_url, args.llm_timeout, args.max_tokens)
         except ValueError as exc:
             parser.error(str(exc))
     response = route_query(
-        " ".join(args.query), system_2=config, tool_timeout=args.tool_timeout,
+        query, system_2=config, tool_timeout=args.tool_timeout,
         decide_only=args.decide_only,
     )
     print(json.dumps(response, indent=2, ensure_ascii=False))
